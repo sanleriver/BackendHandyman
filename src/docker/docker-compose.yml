@@ -1,0 +1,14 @@
+services:
+  handyman:
+    image: postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_USER: postgres_user
+      POSTGRES_DB: handyman_db
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8083:8080"
