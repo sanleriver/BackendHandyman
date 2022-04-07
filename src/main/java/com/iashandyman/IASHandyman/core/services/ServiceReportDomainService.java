@@ -4,6 +4,7 @@ import com.iashandyman.IASHandyman.core.domain.serviceReport.ServiceReport;
 import com.iashandyman.IASHandyman.shared.models.totalWeekly.HoursWorkedTotal;
 import com.iashandyman.IASHandyman.shared.models.totalWeekly.TotalWeeklyRegisters;
 import com.iashandyman.IASHandyman.shared.models.weekly.*;
+import org.apache.tomcat.jni.Local;
 import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
@@ -21,68 +22,272 @@ public class ServiceReportDomainService {
         for (int i = 0; i < serviceReportList.size(); i++){
             //VALIDATE IF BOTH DATES ARE A SAME DAY
             if (ChronoUnit.DAYS.between(serviceReportList.get(i).getStartDatetime().getValue(), serviceReportList.get(i).getEndDatetime().getValue()) < 1){
-                //VALIDATE IF START DATE IS SUNDAY
-                if (serviceReportList.get(i).getStartDatetime().getValue().getDayOfWeek() == DayOfWeek.SUNDAY){
-                    double sundayHoursAmount = calculateHoursAmount(serviceReportList.get(i).getStartDatetime().getValue(), serviceReportList.get(i).getEndDatetime().getValue());
-                    weeklyHoursWorked = saveSundayHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), sundayHoursAmount);
-                    hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + sundayHoursAmount);
-                    //ELSE IF START DATE IS NOT SUNDAY
-                } else {
-                    //VALIDATE IF START DATETIME IS BEFORE TO SEVEN AM
-                    if (serviceReportList.get(i).getStartDatetime().getValue().isBefore(establishSevenAm(serviceReportList.get(i).getStartDatetime().getValue()))){
-                        //VALIDATE IF END DATETIME IS BEFORE TO SEVEN AM
-                        if (serviceReportList.get(i).getEndDatetime().getValue().isBefore(establishSevenAm(serviceReportList.get(i).getStartDatetime().getValue()))){
-                            double nightHoursAmount = calculateHoursAmount(serviceReportList.get(i).getStartDatetime().getValue(), serviceReportList.get(i).getEndDatetime().getValue());
-                            weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
-                            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
-                            //ELSE IF END DATETIME IS AFTER TO SEVEN AM
-                        } else {
-                            double nightHoursAmount = calculateHoursAmount(serviceReportList.get(i).getStartDatetime().getValue(), establishSevenAm(serviceReportList.get(i).getStartDatetime().getValue()));
-                            weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
-                            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
-                            //VALIDATE IF END DATETIME IS BEFORE TO EIGHT PM
-                            if (serviceReportList.get(i).getEndDatetime().getValue().isBefore(establishEightPm(serviceReportList.get(i).getStartDatetime().getValue()))){
-                                double regularHoursAmount = calculateHoursAmount(establishSevenAm(serviceReportList.get(i).getStartDatetime().getValue()), serviceReportList.get(i).getEndDatetime().getValue());
-                                weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);
-                                hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + regularHoursAmount);
-                                //ELSE IF END DATETIME IS AFTER TO EIGHT PM
-                            } else {
-                                double regularHoursAmount = calculateHoursAmount(establishSevenAm(serviceReportList.get(i).getStartDatetime().getValue()), establishEightPm(serviceReportList.get(i).getEndDatetime().getValue()));
-                                weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);
-                                hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + regularHoursAmount);
-                                nightHoursAmount = calculateHoursAmount(establishEightPm(serviceReportList.get(i).getStartDatetime().getValue()), serviceReportList.get(i).getEndDatetime().getValue());
-                                weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
-                                hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
-                            }
-                        }
-                        //ELSE IF START DATETIME IS AFTER TO SEVEN AM
-                    } else {
-                        //VALIDATE IF START DATETIME IS BEFORE TO EIGHT PM
-                        if (serviceReportList.get(i).getStartDatetime().getValue().isBefore(establishEightPm(serviceReportList.get(i).getStartDatetime().getValue()))){
-                            //VALIDATE IF END DATETIME IS BEFORE TO EIGHT PM
-                            TotalWeeklyRegisters registers = calculateWhenEndDatetimeIsAfterEightPm(serviceReportList.get(i).getStartDatetime().getValue(),
-                                    serviceReportList.get(i).getEndDatetime().getValue(),
-                                    weeklyHoursWorked,
-                                    hoursWorkedTotal);
-                            weeklyHoursWorked = registers.getWeeklyHoursWorked();
-                            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
-                            //ELSE IF START DATETIME IS AFTER TO EIGHT PM
-                        } else {
-                            double nightHoursAmount = calculateHoursAmount(serviceReportList.get(i).getStartDatetime().getValue(), serviceReportList.get(i).getEndDatetime().getValue());
-                            weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
-                            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
-                        }
-                    }
-                }
+                TotalWeeklyRegisters registers = calculateWhenBothDatesAreSameDay(serviceReportList.get(i).getStartDatetime().getValue(),
+                        serviceReportList.get(i).getEndDatetime().getValue(), weeklyHoursWorked, hoursWorkedTotal);
+                weeklyHoursWorked = registers.getWeeklyHoursWorked();
+                hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
                 //ELSE IF START DATE IS NOT SUNDAY
+            } else {
+                TotalWeeklyRegisters registers = calculateWhenDatesAreDifferentDays(serviceReportList.get(i).getStartDatetime().getValue(),
+                        serviceReportList.get(i).getEndDatetime().getValue(), weeklyHoursWorked, hoursWorkedTotal);
+                weeklyHoursWorked = registers.getWeeklyHoursWorked();
+                hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
             }
         }
         return weeklyHoursWorked;
     }
 
+    private TotalWeeklyRegisters calculateWhenDatesAreDifferentDays(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                                    WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal){
+        if (startDatetime.getDayOfWeek() == DayOfWeek.SUNDAY || endDatetime.getDayOfWeek() == DayOfWeek.SUNDAY){
+            TotalWeeklyRegisters registers = calculateWhenFirstDateIsSunday(startDatetime, endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        } else {
+            TotalWeeklyRegisters registers = calculateWhenDatesAreDiferrentAndIsNotSundays(startDatetime, endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateWhenDatesAreDiferrentAndIsNotSundays(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                                               WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal) {
+        if (startDatetime.isBefore(establishSevenAm(startDatetime))){
+            TotalWeeklyRegisters registers = calculateHoursOfCompletelyInitialDay(startDatetime, endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        } else {
+            if (startDatetime.isBefore(establishEightPm(startDatetime))){
+                TotalWeeklyRegisters registers = calculateHoursOfCompletelyInitialDayWhenStartDatetimeIsAfterSevenAm(startDatetime, endDatetime,
+                        weeklyHoursWorked, hoursWorkedTotal);
+                weeklyHoursWorked = registers.getWeeklyHoursWorked();
+                hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+            } else {
+                TotalWeeklyRegisters registers = calculateHoursOfCompletelyInitialDayWhenStartDatetimeIsAfterEightPm(startDatetime, endDatetime,
+                        weeklyHoursWorked, hoursWorkedTotal);
+                weeklyHoursWorked = registers.getWeeklyHoursWorked();
+                hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+            }
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateHoursOfCompletelyInitialDayWhenStartDatetimeIsAfterEightPm(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                                                                     WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal){
+        double nightHoursAmount = calculateHoursAmount(startDatetime, establishMidnight(endDatetime));
+        weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+        hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+        TotalWeeklyRegisters registers = calculateHoursOfCompletelyFinalDay(endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+        weeklyHoursWorked = registers.getWeeklyHoursWorked();
+        hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateHoursOfCompletelyInitialDayWhenStartDatetimeIsAfterSevenAm(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                                                                     WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal){
+        double regularHoursAmount = calculateHoursAmount(startDatetime, establishEightPm(startDatetime));
+        weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);
+        hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + regularHoursAmount);
+        double nightHoursAmount2 = calculateHoursAmount(establishEightPm(startDatetime), establishMidnight(endDatetime));
+        weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount2);
+        hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount2);
+        TotalWeeklyRegisters registers = calculateHoursOfCompletelyFinalDay(endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+        weeklyHoursWorked = registers.getWeeklyHoursWorked();
+        hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateHoursOfCompletelyInitialDay(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                              WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal) {
+        double nightHoursAmount = calculateHoursAmount(startDatetime, establishSevenAm(startDatetime));
+        weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+        hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+        double regularHoursAmount = calculateHoursAmount(establishSevenAm(startDatetime), establishEightPm(startDatetime));
+        weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);
+        hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + regularHoursAmount);
+        double nightHoursAmount2 = calculateHoursAmount(establishEightPm(startDatetime), establishMidnight(endDatetime));
+        weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount2);
+        hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount2);
+        TotalWeeklyRegisters registers = calculateHoursOfCompletelyFinalDay(endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+        weeklyHoursWorked = registers.getWeeklyHoursWorked();
+        hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateHoursOfCompletelyFinalDay(LocalDateTime endDatetime, WeeklyHoursWorked weeklyHoursWorked,
+                                                                    HoursWorkedTotal hoursWorkedTotal) {
+        if (endDatetime.isBefore(establishSevenAm(endDatetime))){
+            double nightHoursAmount = calculateHoursAmount(establishMidnight(endDatetime), endDatetime);
+            weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+        } else {
+            TotalWeeklyRegisters registers = calculateHoursOfCompletelyFinalDayWhenEndDatetimeIsAfterSevenAm(endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateHoursOfCompletelyFinalDayWhenEndDatetimeIsAfterSevenAm(LocalDateTime endDatetime, WeeklyHoursWorked weeklyHoursWorked,
+                                                                                                 HoursWorkedTotal hoursWorkedTotal) {
+        double nightHoursAmount = calculateHoursAmount(establishMidnight(endDatetime), establishSevenAm(endDatetime));
+        weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+        hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+        if (endDatetime.isBefore(establishEightPm(endDatetime))){
+            double regularHoursAmount = calculateHoursAmount(establishSevenAm(endDatetime), endDatetime);
+            weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + regularHoursAmount);
+        } else {
+            double regularHoursAmount = calculateHoursAmount(establishSevenAm(endDatetime), establishEightPm(endDatetime));
+            weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + regularHoursAmount);
+            double nightHoursAmount2 = calculateHoursAmount(establishEightPm(endDatetime), endDatetime);
+            weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount2);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount2);
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateWhenFirstDateIsSunday(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                               WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal){
+        if (startDatetime.getDayOfWeek() == DayOfWeek.SUNDAY){
+            double sundayHoursAmount = calculateHoursAmount(startDatetime, establishMidnight(endDatetime));
+            weeklyHoursWorked = saveSundayHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), sundayHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + sundayHoursAmount);
+        } else{
+            TotalWeeklyRegisters registers = calculateWhenLastDateIsSunday(endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateWhenLastDateIsSunday(LocalDateTime endDatetime,
+                                                               WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal) {
+        if (endDatetime.isBefore(establishSevenAm(endDatetime))){
+            double nightHoursAmount = calculateHoursAmount(establishMidnight(endDatetime), endDatetime);
+            weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+        } else {
+            double nightHoursAmount = calculateHoursAmount(establishMidnight(endDatetime), establishSevenAm(endDatetime));
+            weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+            TotalWeeklyRegisters registers = calculateWhenLastDateIsSundayAndEndTimeIsAfterSevenAm(endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateWhenLastDateIsSundayAndEndTimeIsAfterSevenAm(LocalDateTime endDatetime,
+                                                                                        WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal) {
+        if (endDatetime.isBefore(establishEightPm(endDatetime))){
+            double regularHoursAmount = calculateHoursAmount(establishSevenAm(endDatetime), endDatetime);
+            weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + regularHoursAmount);
+        } else {
+            double regularHoursAmount = calculateHoursAmount(establishSevenAm(endDatetime), establishEightPm(endDatetime));
+            weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + regularHoursAmount);
+            double nightHoursAmount = calculateHoursAmount(establishEightPm(endDatetime), endDatetime);
+            weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateWhenBothDatesAreSameDay(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                                  WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal){
+        if (startDatetime.getDayOfWeek() == DayOfWeek.SUNDAY){
+            double sundayHoursAmount = calculateHoursAmount(startDatetime, endDatetime);
+            weeklyHoursWorked = saveSundayHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), sundayHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + sundayHoursAmount);
+            //ELSE IF START DATE IS NOT SUNDAY
+        } else {
+            TotalWeeklyRegisters registers = calculateWhenStartDayIsNotSunday(startDatetime, endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateWhenStartDayIsNotSunday(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                                  WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal){
+        //VALIDATE IF START DATETIME IS BEFORE TO SEVEN AM
+        if (startDatetime.isBefore(establishSevenAm(startDatetime))){
+            TotalWeeklyRegisters registers = calculateWhenStartDatetimeIsBeforeSevenAm(startDatetime,
+                    endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+            //ELSE IF START DATETIME IS AFTER TO SEVEN AM
+        } else {
+            //VALIDATE IF START DATETIME IS BEFORE TO EIGHT PM
+            TotalWeeklyRegisters registers = calculateWhenStartDatetimeIsBeforeEightPm(startDatetime,
+                    endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateWhenStartDatetimeIsBeforeSevenAm(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                                           WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal){
+        //VALIDATE IF END DATETIME IS BEFORE TO SEVEN AM
+        if (endDatetime.isBefore(establishSevenAm(startDatetime))){
+            double nightHoursAmount = calculateHoursAmount(startDatetime, endDatetime);
+            weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+            //ELSE IF END DATETIME IS AFTER TO SEVEN AM
+        } else {
+            TotalWeeklyRegisters registers = calculateWhenEndDatetimeIsAfterSevenAm(startDatetime, endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateWhenEndDatetimeIsAfterSevenAm(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                                        WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal){
+        double nightHoursAmount = calculateHoursAmount(startDatetime, establishSevenAm(startDatetime));
+        weeklyHoursWorked = saveNightHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+        hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+        //VALIDATE IF END DATETIME IS BEFORE TO EIGHT PM
+        if (endDatetime.isBefore(establishEightPm(startDatetime))){
+            double regularHoursAmount = calculateHoursAmount(establishSevenAm(startDatetime), endDatetime);
+            weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + regularHoursAmount);
+            //ELSE IF END DATETIME IS AFTER TO EIGHT PM
+        } else {
+            double regularHoursAmount = calculateHoursAmount(establishSevenAm(startDatetime), establishEightPm(endDatetime));
+            weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + regularHoursAmount);
+            nightHoursAmount = calculateHoursAmount(establishEightPm(startDatetime), endDatetime);
+            weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
+    private TotalWeeklyRegisters calculateWhenStartDatetimeIsBeforeEightPm(LocalDateTime startDatetime, LocalDateTime endDatetime,
+                                                                           WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal){
+        if (startDatetime.isBefore(establishEightPm(startDatetime))){
+            //VALIDATE IF END DATETIME IS BEFORE TO EIGHT PM
+            TotalWeeklyRegisters registers = calculateWhenEndDatetimeIsAfterEightPm(startDatetime,
+                    endDatetime, weeklyHoursWorked, hoursWorkedTotal);
+            weeklyHoursWorked = registers.getWeeklyHoursWorked();
+            hoursWorkedTotal.setValue(registers.getHoursWorkedTotal().getValue());
+            //ELSE IF START DATETIME IS AFTER TO EIGHT PM
+        } else {
+            double nightHoursAmount = calculateHoursAmount(startDatetime, endDatetime);
+            weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), nightHoursAmount);
+            hoursWorkedTotal.setValue(hoursWorkedTotal.getValue() + nightHoursAmount);
+        }
+        return new TotalWeeklyRegisters(weeklyHoursWorked, hoursWorkedTotal);
+    }
+
     private TotalWeeklyRegisters calculateWhenEndDatetimeIsAfterEightPm(LocalDateTime startDatetime, LocalDateTime endDatetime,
                                                                         WeeklyHoursWorked weeklyHoursWorked, HoursWorkedTotal hoursWorkedTotal){
-
         if (endDatetime.isBefore(establishEightPm(startDatetime))){
             double regularHoursAmount = calculateHoursAmount(startDatetime, endDatetime);
             weeklyHoursWorked = saveRegularHoursAmount(weeklyHoursWorked, hoursWorkedTotal.getValue(), regularHoursAmount);

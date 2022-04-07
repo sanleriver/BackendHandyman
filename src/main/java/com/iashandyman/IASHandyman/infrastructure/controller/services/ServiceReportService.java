@@ -51,7 +51,7 @@ public class ServiceReportService {
         List<LocalDateTime> dateTimes = establishInitialAndFinalDateOfWeek(week);
         List<ServiceReport> serviceReportList = serviceReportRepository.getReportByTechnicianAndWeek(technicianId, dateTimes.get(0), dateTimes.get(1));
         WeeklyHoursWorked result = domainService.calculateHours(serviceReportList);
-        return null;
+        return result;
     }
 
     private List<LocalDateTime> establishInitialAndFinalDateOfWeek(int week){
